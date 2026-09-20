@@ -3,8 +3,13 @@ from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
 import uuid
 
-# 페이지 기본 설정
-st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
+# 페이지 기본 설정 (모바일 접속 시 사이드바 접근성 고려)
+st.set_page_config(
+    page_title="위치 기반 자동 인원 카운터", 
+    page_icon="🏫", 
+    layout="centered",
+    initial_sidebar_state="expanded"  # 모바일/PC 접속 시 사이드바 기본 열림
+)
 
 ALLOWED_RADIUS_METERS = 100  # 자동 감지 반경 (100m)
 
@@ -37,15 +42,15 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
 # ==========================================
-# 3. 사이드바 : 관리자 전용 로그인 및 메뉴 탭
+# 3. 사이드바 : 모바일 및 PC 겸용 관리자 메뉴
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 관리자 메뉴")
     
     if not st.session_state.is_admin:
-        st.subheader("관리자 로그인")
-        admin_input_pw = st.text_input("비밀번호 입력", type="password")
-        if st.button("로그인", use_container_width=True):
+        st.subheader("🔑 관리자 로그인")
+        admin_input_pw = st.text_input("비밀번호 입력", type="password", key="admin_pw_input")
+        if st.button("로그인", use_container_width=True, type="primary"):
             if admin_input_pw == ADMIN_PASSWORD:
                 st.session_state.is_admin = True
                 st.success("관리자로 인증되었습니다!")
@@ -80,6 +85,11 @@ with st.sidebar:
 # 4. 메인 화면 UI (일반 사용자 화면)
 # ==========================================
 st.title("🏫 위치 기반 자동 인원 카운터")
+
+# 모바일 접속 시 사이드바 위치 안내
+with st.expander("📱 모바일 관리자 메뉴 이용 안내", expanded=False):
+    st.write("모바일 화면 왼쪽 상단의 **`>` (메뉴) 버튼**을 누르시면 관리자 로그인 및 설정 탭이 나타납니다.")
+
 st.write("위치 권한을 승인하면 반경 100m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
 
 st.divider()
@@ -112,7 +122,7 @@ else:
     # 1) 기준점(교실 위치) 설정 여부 확인
     if global_store["base_location"] is None:
         st.warning("📍 교실 기준 위치가 아직 설정되지 않았습니다.")
-        st.info("💡 관리자가 사이드바 메뉴에서 비밀번호 입력 후 교실 위치를 지정해야 합니다.")
+        st.info("💡 모바일 상단 `>` 메뉴(사이드바)에서 관리자 로그인 후 교실 위치를 지정해 주세요.")
     else:
         # 2) 기준점과 현재 접속자의 거리 계산
         base_lat, base_lon = global_store["base_location"]

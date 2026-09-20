@@ -36,7 +36,7 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
 # ==========================================
-# 3. 사이드바 : 관리자 메뉴 (로그아웃 버튼 위에 비밀번호 재설정 배치)
+# 3. 사이드바 : 관리자 메뉴 (로그아웃 버튼 바로 위에 비밀번호 재설정)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 관리자 메뉴")
@@ -72,7 +72,7 @@ with st.sidebar:
 
         st.divider()
 
-        # 3) 비밀번호 재설정 (로그아웃 바로 위)
+        # 3) 비밀번호 재설정 (로그아웃 버튼 바로 위)
         st.write("🔐 **비밀번호 재설정**")
         side_new_pw = st.text_input("새 비밀번호", type="password", key="side_new_pw")
         side_new_pw_confirm = st.text_input("새 비밀번호 확인", type="password", key="side_new_pw_confirm")

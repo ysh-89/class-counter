@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 
 
 # ==========================================
@@ -82,7 +81,6 @@ html_code = f"""
 
 <meta charset="utf-8">
 
-
 <style>
 
 body {{
@@ -90,74 +88,51 @@ body {{
     font-family: Arial, sans-serif;
 }}
 
-
 #map {{
     width: 100%;
     height: 300px;
 }}
 
-
 button {{
     width: 100%;
     padding: 15px;
     margin-top: 10px;
-
     font-size: 16px;
-
     border: none;
     border-radius: 8px;
-
     cursor: pointer;
 }}
 
-
 #result {{
-
     margin-top: 15px;
-
     padding: 15px;
-
     border-radius: 8px;
-
     background: #f1f1f1;
-
     text-align: center;
-
 }}
 
 </style>
-
 
 <script
     src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_JS_KEY}">
 </script>
 
-
 </head>
-
 
 <body>
 
-
 <div id="map"></div>
 
-
 <button onclick="checkLocation()">
-
 📍 현재 위치 확인
-
 </button>
 
-
 <div id="result">
-
 아직 위치를 확인하지 않았습니다.
-
 </div>
 
 
 <script>
-
 
 // ==========================================
 // 교실 위치
@@ -298,17 +273,6 @@ function locationSuccess(position) {{
 
     const accuracy =
         position.coords.accuracy;
-
-
-    // ======================================
-    // 현재 위치
-    // ======================================
-
-    const userPosition =
-        new kakao.maps.LatLng(
-            latitude,
-            longitude
-        );
 
 
     // ======================================
@@ -481,7 +445,6 @@ function calculateDistance(
 
 </script>
 
-
 </body>
 
 </html>
@@ -489,11 +452,10 @@ function calculateDistance(
 
 
 # ==========================================
-# HTML 실행
+# HTML + JavaScript 실행
 # ==========================================
 
-components.html(
+st.iframe(
     html_code,
-    height=500,
-    scrolling=False
+    height=500
 )

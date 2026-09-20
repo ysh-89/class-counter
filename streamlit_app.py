@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
+from streamlit_local_storage import LocalStorage
 import uuid
 
 # 페이지 기본 설정
@@ -10,8 +11,6 @@ ALLOWED_RADIUS_METERS = 100  # 자동 감지 반경 (100m)
 
 # ==========================================
 # 🔒 관리자 기기 ID 등록
-# 관리자로 사용할 기기의 고유 ID를 여기에 입력하세요.
-# (처음 한 번 ID를 확인하여 아래 큰따옴표 안에 적어주시면 됩니다)
 # ==========================================
 ADMIN_USER_ID = "여기에_관리자_기기_ID를_입력하세요"
 
@@ -25,15 +24,23 @@ def get_global_store():
 global_store = get_global_store()
 
 # ==========================================
-# 2. 사용자 고유 ID 생성 (기기 식별용)
+# 2. 브라우저 쿠키(Local Storage)를 이용한 고유 ID 유효성 보장
 # ==========================================
-if "user_id" not in st.session_state:
-    st.session_state.user_id = str(uuid.uuid4())
+localStorage = LocalStorage()
 
-user_id = st.session_state.user_id
+# 브라우저 저장소에서 기존 ID 불러오기
+saved_user_id = localStorage.getItem("classroom_user_id")
+
+if saved_user_id is None:
+    # 저장된 ID가 없으면 새로 생성 후 브라우저에 저장
+    new_id = str(uuid.uuid4())
+    localStorage.setItem("classroom_user_id", new_id)
+    user_id = new_id
+else:
+    user_id = saved_user_id
 
 # ==========================================
-# 3. 메인 화면 UI (일반 사용자 공통)
+# 3. 메인 화면 UI
 # ==========================================
 st.title("🏫 위치 기반 자동 인원 카운터")
 st.write("위치 권한을 승인하면 반경 100m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")

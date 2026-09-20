@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_js_eval import get_geolocation
+from streamlit_js_eval import get_geolocation, set_cookie, get_cookie
 from geopy.distance import geodesic
 import uuid
 
@@ -24,12 +24,17 @@ def get_global_store():
 global_store = get_global_store()
 
 # ==========================================
-# 2. 사용자 고유 ID 생성 (세션 기반)
+# 2. 브라우저 쿠키/저장소 기반 사용자 ID 고정 (새로고침 중복 방지 핵심)
 # ==========================================
-if "user_id" not in st.session_state:
-    st.session_state.user_id = str(uuid.uuid4())
+# 브라우저 쿠키에서 기존 ID를 불러옵니다.
+saved_id = get_cookie("classroom_user_id")
 
-user_id = st.session_state.user_id
+if not saved_id:
+    # 저장된 ID가 없으면 새 ID를 만들고 브라우저 쿠키에 1년 동안 저장합니다.
+    user_id = str(uuid.uuid4())
+    set_cookie("classroom_user_id", user_id, 365)
+else:
+    user_id = saved_id
 
 # 관리자 인증 상태 세션
 if "is_admin" not in st.session_state:

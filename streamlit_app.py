@@ -36,7 +36,7 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
 # ==========================================
-# 3. 사이드바 : 관리자 메뉴 (로그아웃 버튼 바로 위에 비밀번호 재설정)
+# 3. 사이드바 : 관리자 메뉴 (로그아웃 바로 위에 비밀번호 재설정)
 # ==========================================
 with st.sidebar:
     st.header("⚙️ 관리자 메뉴")
@@ -107,15 +107,14 @@ st.metric(label="📊 현재 교실(100m 반경) 내 실시간 인원수", value
 st.divider()
 
 # ==========================================
-# 5. 위치 수집 및 자동 카운팅 로직
+# 5. 위치 수집 및 자동 카운팅 로직 (KeyError 예방 안전 코드 적용)
 # ==========================================
 location = get_geolocation()
 
-# location 결과값 검증 (KeyError 방지)
 if location is None:
     st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
 elif "coords" not in location or location["coords"] is None:
-    st.warning("⚠️ 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지, 위치 권한을 허용했는지 확인해 주세요.")
+    st.warning("⚠️ 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지, 브라우저 위치 권한을 허용했는지 확인해 주세요.")
 else:
     user_lat = location['coords']['latitude']
     user_lon = location['coords']['longitude']
@@ -152,15 +151,6 @@ else:
             st.error(f"❌ 교실 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
 
         # 실시간 인원 확인/새로고침 버튼
-        st.divider()
-        if st.button("🔄 현재 실시간 인원수 새로고침", use_container_width=True, type="primary"):
-            st.rerun()
-            
-        st.info(f"💡 현재 교실 내 실시간 합산 인원: **{len(global_store['active_users'])}명**")
-
-        # ==========================================
-        # 6. 실시간 인원 확인/새로고침 버튼
-        # ==========================================
         st.divider()
         if st.button("🔄 현재 실시간 인원수 새로고침", use_container_width=True, type="primary"):
             st.rerun()

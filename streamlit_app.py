@@ -1,8 +1,8 @@
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
+import pandas as pd
 import uuid
-import streamlit.components.v1 as components
 
 # 페이지 기본 설정
 st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
@@ -15,14 +15,11 @@ ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 @st.cache_resource
 def get_global_store():
     admin_email = st.secrets.get("ADMIN_EMAIL", "seokhwanyun892@gmail.com")
-    kakao_key = st.secrets.get("KAKAO_JS_KEY", "")
-    
     return {
         "base_location": None,  # (위도, 경도)
         "base_address": "",     # 교실 주소 이름
         "active_users": set(),
         "admin_email": admin_email,
-        "kakao_js_key": kakao_key
     }
 
 global_store = get_global_store()
@@ -44,7 +41,7 @@ if "is_admin" not in st.session_state:
 # ==========================================
 tab_user, tab_admin = st.tabs(["📱 사용자 화면", "🔐 관리자 전용"])
 
-# 공통으로 브라우저 위치 가져오기 (에러 방지를 위해 key 인자 제거)
+# 공통으로 브라우저 위치 가져오기
 location = get_geolocation()
 
 # ------------------------------------------
@@ -62,50 +59,19 @@ with tab_user:
         user_lat = location['coords']['latitude']
         user_lon = location['coords']['longitude']
 
-        kakao_js_key = global_store["kakao_js_key"]
+        # 🗺️ 스트리밋 기본 지도 표시 (API 키 불필요)
+        map_data = pd.DataFrame({'lat': [user_lat], 'lon': [user_lon]})
+        if global_store["base_location"]:
+            base_lat, base_lon = global_store["base_location"]
+            # 교실 위치도 지도에 함께 표시하기 위해 데이터 추가
+            map_data = pd.DataFrame({
+                'lat': [user_lat, base_lat],
+                'lon': [user_lon, base_lon]
+            })
         
-        if not kakao_js_key:
-            st.error("⚠️ Streamlit Secrets에 'KAKAO_JS_KEY'가 설정되어 있지 않습니다. 설정 후 다시 시도해 주세요.")
-        else:
-            base_lat = global_store["base_location"][0] if global_store["base_location"] else user_lat
-            base_lon = global_store["base_location"][1] if global_store["base_location"] else user_lon
-            has_base = "true" if global_store["base_location"] else "false"
-
-            kakao_map_html = f"""
-            <div id="map" style="width:100%;height:350px;border-radius:10px;"></div>
-            <script type="text/javascript" src="//dapi.kakao.com/v2/maps/sdk.js?appkey={kakao_js_key}"></script>
-            <script>
-                var container = document.getElementById('map');
-                var options = {{
-                    center: new kakao.maps.LatLng({base_lat}, {base_lon}),
-                    level: 3
-                }};
-                var map = new kakao.maps.Map(container, options);
-
-                var hasBase = {has_base};
-                if (hasBase) {{
-                    var basePosition = new kakao.maps.LatLng({base_lat}, {base_lon});
-                    var baseMarker = new kakao.maps.Marker({{ position: basePosition }});
-                    baseMarker.setMap(map);
-
-                    var circle = new kakao.maps.Circle({{
-                        center: basePosition,
-                        radius: {ALLOWED_RADIUS_METERS},
-                        strokeWeight: 2,
-                        strokeColor: '#FF0000',
-                        strokeOpacity: 0.8,
-                        fillColor: '#FF0000',
-                        fillOpacity: 0.2
-                    }});
-                    circle.setMap(map);
-                }}
-
-                var userPosition = new kakao.maps.LatLng({user_lat}, {user_lon});
-                var userMarker = new kakao.maps.Marker({{ position: userPosition }});
-                userMarker.setMap(map);
-            </script>
-            """
-            components.html(kakao_map_html, height=370)
+        st.subheader("🗺️ 실시간 위치 지도")
+        st.map(map_data, zoom=16)
+        st.caption("🔵 파란점: 내 위치 / (기준점이 설정된 경우 함께 표시됩니다)")
 
         st.divider()
 

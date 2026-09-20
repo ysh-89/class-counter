@@ -5,7 +5,7 @@ import requests
 st.set_page_config(page_title="교실 인원 카운터", page_icon="🏫", layout="centered")
 
 # ==========================================
-# 1. 카카오 API 설정 (오직 Secrets에서만 가져옴)
+# 1. 카카오 API 설정 (오직 Streamlit Secrets에서만 가져옴)
 # ==========================================
 KAKAO_REST_API_KEY = st.secrets.get("KAKAO_REST_API_KEY", "")
 REDIRECT_URI = st.secrets.get("REDIRECT_URI", "")

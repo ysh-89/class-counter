@@ -1,5 +1,5 @@
 import streamlit as st
-from streamlit_js_eval import get_geolocation, set_cookie, get_cookie
+from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
 import uuid
 
@@ -24,17 +24,15 @@ def get_global_store():
 global_store = get_global_store()
 
 # ==========================================
-# 2. 브라우저 쿠키/저장소 기반 사용자 ID 고정 (새로고침 중복 방지 핵심)
+# 2. URL 쿼리 파라미터 기반 사용자 ID 고정 (무한 로딩 및 중복 방지)
 # ==========================================
-# 브라우저 쿠키에서 기존 ID를 불러옵니다.
-saved_id = get_cookie("classroom_user_id")
-
-if not saved_id:
-    # 저장된 ID가 없으면 새 ID를 만들고 브라우저 쿠키에 1년 동안 저장합니다.
-    user_id = str(uuid.uuid4())
-    set_cookie("classroom_user_id", user_id, 365)
+# 주소창(Query Params)에서 id 가져오기
+if "uid" in st.query_params:
+    user_id = st.query_params["uid"]
 else:
-    user_id = saved_id
+    # URL에 id가 없다면 새로 생성하여 URL 주소창에 추가
+    user_id = str(uuid.uuid4())[:8]  # 식별 가능한 8자리 고유 ID
+    st.query_params["uid"] = user_id
 
 # 관리자 인증 상태 세션
 if "is_admin" not in st.session_state:

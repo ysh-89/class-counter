@@ -121,11 +121,15 @@ else:
             st.success("✅ 현재 위치가 교실 기준점으로 저장되었습니다!")
             st.rerun()
 
-    # 🗺️ [지도 표시 부분] 요청하신 '안내문 바로 아래 지도 및 100m 반투명 하얀색 원'
+    # 🗺️ [지도 표시 부분] API 키 없이 깔끔한 지도 및 100m 반투명 하얀색 원
     map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
     
-    # 어두운 배경(다크모드)에서도 반투명 하얀색 원이 잘 보이도록 카토DB 다크 타일 또는 일반 타일 적용
-    m = folium.Map(location=map_center, zoom_start=17, tiles="CartoDB dark_matter")
+    # API 키 제한이 없는 기본 선명한 지도 타일 사용
+    m = folium.Map(
+        location=map_center, 
+        zoom_start=17, 
+        tiles="OpenStreetMap"
+    )
 
     # 교실 기준점이 설정되어 있다면 지도에 기준점 마커 & 100m 반투명 하얀색 범위 원 추가
     if global_store["base_location"]:
@@ -142,11 +146,11 @@ else:
         folium.Circle(
             location=[base_lat, base_lon],
             radius=ALLOWED_RADIUS_METERS,
-            color="#FFFFFF",         # 테두리 색상: 하얀색
-            weight=2,                # 테두리 두께
+            color="#000000",         # 테두리 선: 검은색
+            weight=1.5,
             fill=True,
-            fill_color="#FFFFFF",    # 채우기 색상: 하얀색
-            fill_opacity=0.35,       # 투명도 (35% 반투명)
+            fill_color="#FFFFFF",    # 원 내부 채우기: 하얀색
+            fill_opacity=0.45,       # 투명도 (45% 반투명)
             popup="100m 자동 인식 범위"
         ).add_to(m)
 

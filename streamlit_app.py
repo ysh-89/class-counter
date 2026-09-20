@@ -37,7 +37,64 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
 # ==========================================
-# 3. 메인 화면 UI (일반 사용자 화면)
+# 3. 사이드바 : 관리자 메뉴 (비밀번호 변경 기능 포함)
+# ==========================================
+with st.sidebar:
+    st.header("⚙️ 관리자 메뉴")
+    
+    if not st.session_state.is_admin:
+        st.subheader("🔑 관리자 로그인")
+        sidebar_pw = st.text_input("비밀번호 입력", type="password", key="sidebar_pw_input")
+        if st.button("로그인", key="sidebar_login_btn", use_container_width=True):
+            if sidebar_pw == global_store["admin_password"]:
+                st.session_state.is_admin = True
+                st.success("관리자로 인증되었습니다!")
+                st.rerun()
+            else:
+                st.error("비밀번호가 올바르지 않습니다.")
+    else:
+        st.success("🔓 관리자 권한 활성화됨")
+        
+        # 1) 교실 위치 설정
+        st.write("📍 **교실 위치 관리**")
+        if st.button("📌 현재 내 위치를 교실 기준점으로 설정", key="sidebar_set_base", use_container_width=True):
+            st.session_state.set_base_requested = True
+            st.rerun()
+
+        st.divider()
+
+        # 2) 비밀번호 변경
+        st.write("🔐 **비밀번호 변경**")
+        side_new_pw = st.text_input("새 비밀번호", type="password", key="side_new_pw")
+        side_new_pw_confirm = st.text_input("새 비밀번호 확인", type="password", key="side_new_pw_confirm")
+        if st.button("🔑 비밀번호 변경하기", key="side_change_pw_btn", use_container_width=True):
+            if not side_new_pw:
+                st.warning("새 비밀번호를 입력해 주세요.")
+            elif side_new_pw != side_new_pw_confirm:
+                st.error("비밀번호가 일치하지 않습니다.")
+            else:
+                global_store["admin_password"] = side_new_pw
+                st.success("비밀번호가 변경되었습니다!")
+
+        st.divider()
+
+        # 3) 전체 초기화
+        st.write("🔄 **데이터 관리**")
+        if st.button("⚠️ 전체 데이터 및 기준점 초기화", key="sidebar_reset", use_container_width=True):
+            global_store["base_location"] = None
+            global_store["active_users"] = set()
+            st.warning("전체 데이터가 초기화되었습니다.")
+            st.rerun()
+
+        st.divider()
+
+        # 4) 로그아웃
+        if st.button("🔒 관리자 로그아웃", key="sidebar_logout", use_container_width=True):
+            st.session_state.is_admin = False
+            st.rerun()
+
+# ==========================================
+# 4. 메인 화면 UI (일반 사용자 화면)
 # ==========================================
 st.title("🏫 위치 기반 자동 인원 카운터")
 st.write("위치 권한을 승인하면 반경 100m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
@@ -51,7 +108,7 @@ st.metric(label="📊 현재 교실(100m 반경) 내 실시간 인원수", value
 st.divider()
 
 # ==========================================
-# 4. 위치 수집 및 자동 카운팅 로직
+# 5. 위치 수집 및 자동 카운팅 로직
 # ==========================================
 location = get_geolocation()
 
@@ -72,7 +129,7 @@ else:
     # 1) 기준점(교실 위치) 설정 여부 확인
     if global_store["base_location"] is None:
         st.warning("📍 교실 기준 위치가 아직 설정되지 않았습니다.")
-        st.info("💡 하단의 관리자 전용 메뉴에서 비밀번호 입력 후 교실 위치를 지정해 주세요.")
+        st.info("💡 관리자 메뉴에서 비밀번호 입력 후 교실 위치를 지정해 주세요.")
     else:
         # 2) 기준점과 현재 접속자의 거리 계산
         base_lat, base_lon = global_store["base_location"]
@@ -93,7 +150,7 @@ else:
             st.error(f"❌ 교실 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
 
         # ==========================================
-        # 5. 실시간 인원 확인/새로고침 버튼
+        # 6. 실시간 인원 확인/새로고침 버튼
         # ==========================================
         st.divider()
         if st.button("🔄 현재 실시간 인원수 새로고침", use_container_width=True, type="primary"):
@@ -102,15 +159,15 @@ else:
         st.info(f"💡 현재 교실 내 실시간 합산 인원: **{len(global_store['active_users'])}명**")
 
     # ==========================================
-    # 6. 관리자 전용 메뉴 (로그인 & 비밀번호 변경 기능 포함)
+    # 7. 메인 화면 하단 관리자 설정 (선택적 이용)
     # ==========================================
     st.divider()
-    with st.expander("⚙️ 관리자 설정 (터치하여 열기)"):
+    with st.expander("⚙️ 메인 화면 관리자 설정 (터치하여 열기)"):
         if not st.session_state.is_admin:
             st.subheader("🔑 관리자 로그인")
-            admin_input_pw = st.text_input("비밀번호 입력", type="password", key="main_admin_pw")
-            if st.button("로그인", use_container_width=True):
-                if admin_input_pw == global_store["admin_password"]:
+            main_admin_pw = st.text_input("비밀번호 입력", type="password", key="main_admin_pw")
+            if st.button("로그인", key="main_login_btn", use_container_width=True):
+                if main_admin_pw == global_store["admin_password"]:
                     st.session_state.is_admin = True
                     st.success("관리자로 인증되었습니다!")
                     st.rerun()
@@ -121,31 +178,31 @@ else:
             
             # 1) 교실 위치 설정
             st.write("📍 **교실 위치 관리**")
-            if st.button("📌 현재 내 위치를 교실 기준점으로 설정", use_container_width=True):
+            if st.button("📌 현재 내 위치를 교실 기준점으로 설정", key="main_set_base", use_container_width=True):
                 st.session_state.set_base_requested = True
                 st.rerun()
 
             st.divider()
             
-            # 2) 비밀번호 변경 기능
+            # 2) 비밀번호 변경
             st.write("🔐 **비밀번호 변경**")
-            new_pw = st.text_input("새로운 비밀번호 입력", type="password", key="new_pw_input")
-            new_pw_confirm = st.text_input("새로운 비밀번호 확인", type="password", key="new_pw_confirm")
+            main_new_pw = st.text_input("새로운 비밀번호 입력", type="password", key="main_new_pw")
+            main_new_pw_confirm = st.text_input("새로운 비밀번호 확인", type="password", key="main_new_pw_confirm")
             
-            if st.button("🔑 비밀번호 변경하기", use_container_width=True):
-                if not new_pw:
+            if st.button("🔑 비밀번호 변경하기", key="main_change_pw_btn", use_container_width=True):
+                if not main_new_pw:
                     st.warning("새 비밀번호를 입력해 주세요.")
-                elif new_pw != new_pw_confirm:
+                elif main_new_pw != main_new_pw_confirm:
                     st.error("새 비밀번호가 서로 일치하지 않습니다.")
                 else:
-                    global_store["admin_password"] = new_pw
+                    global_store["admin_password"] = main_new_pw
                     st.success("비밀번호가 성공적으로 변경되었습니다!")
 
             st.divider()
             
             # 3) 데이터 초기화
             st.write("🔄 **데이터 관리**")
-            if st.button("⚠️ 전체 데이터 및 기준점 초기화", use_container_width=True):
+            if st.button("⚠️ 전체 데이터 및 기준점 초기화", key="main_reset", use_container_width=True):
                 global_store["base_location"] = None
                 global_store["active_users"] = set()
                 st.warning("전체 데이터가 초기화되었습니다.")
@@ -154,6 +211,6 @@ else:
             st.divider()
             
             # 4) 로그아웃
-            if st.button("🔒 관리자 로그아웃", use_container_width=True):
+            if st.button("🔒 관리자 로그아웃", key="main_logout", use_container_width=True):
                 st.session_state.is_admin = False
                 st.rerun()

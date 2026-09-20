@@ -1,7 +1,6 @@
 import streamlit as st
-from streamlit_js_eval import get_geolocation
+from streamlit_js_eval import get_geolocation, set_cookie, get_cookie
 from geopy.distance import geodesic
-from streamlit_local_storage import LocalStorage
 import uuid
 
 # 페이지 기본 설정
@@ -11,8 +10,9 @@ ALLOWED_RADIUS_METERS = 100  # 자동 감지 반경 (100m)
 
 # ==========================================
 # 🔒 관리자 기기 ID 등록
+# 주소창에 ?admin_check=true 입력 후 확인한 내 ID를 아래에 넣으세요.
 # ==========================================
-ADMIN_USER_ID = "여기에_관리자_기기_ID를_입력하세요"
+ADMIN_USER_ID = "여기에_확인한_관리자_ID를_붙여넣으세요"
 
 # ==========================================
 # 1. 서버 전체 공유 저장소 (실시간 데이터)
@@ -24,23 +24,23 @@ def get_global_store():
 global_store = get_global_store()
 
 # ==========================================
-# 2. 브라우저 쿠키(Local Storage)를 이용한 고유 ID 유효성 보장
+# 2. 브라우저 쿠키 기반 사용자 고유 ID 고정 (중복 방지)
 # ==========================================
-localStorage = LocalStorage()
+user_id = get_cookie("classroom_user_id")
 
-# 브라우저 저장소에서 기존 ID 불러오기
-saved_user_id = localStorage.getItem("classroom_user_id")
-
-if saved_user_id is None:
-    # 저장된 ID가 없으면 새로 생성 후 브라우저에 저장
-    new_id = str(uuid.uuid4())
-    localStorage.setItem("classroom_user_id", new_id)
-    user_id = new_id
-else:
-    user_id = saved_user_id
+if not user_id:
+    user_id = str(uuid.uuid4())
+    set_cookie("classroom_user_id", user_id, 365)
 
 # ==========================================
-# 3. 메인 화면 UI
+# 3. 관리자 ID 확인용 디버그 도구 (?admin_check=true 접속 시 실행)
+# ==========================================
+if st.query_params.get("admin_check") == "true":
+    st.error(f"🆔 내 기기 고유 ID: `{user_id}`")
+    st.info("위 ID를 복사하여 코드의 ADMIN_USER_ID에 붙여넣으세요!")
+
+# ==========================================
+# 4. 메인 화면 UI (일반 사용자 공통)
 # ==========================================
 st.title("🏫 위치 기반 자동 인원 카운터")
 st.write("위치 권한을 승인하면 반경 100m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
@@ -54,7 +54,7 @@ st.metric(label="📊 현재 교실(100m 반경) 내 인원수", value=f"{curren
 st.divider()
 
 # ==========================================
-# 4. 위치 수집 및 자동 카운팅 로직
+# 5. 위치 수집 및 자동 카운팅 로직
 # ==========================================
 location = get_geolocation()
 
@@ -75,7 +75,7 @@ else:
 
         st.write(f"📍 현재 교실과의 거리: **약 {int(distance)}m**")
 
-        # 3) 반경 100m 안팎 판정 및 자동 집계
+        # 3) 반경 100m 안팎 판정 및 자동 집계 (중복 방지)
         if distance <= ALLOWED_RADIUS_METERS:
             if user_id not in global_store["active_users"]:
                 global_store["active_users"].add(user_id)
@@ -88,12 +88,12 @@ else:
             st.error(f"❌ 교실 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
 
     # ==========================================
-    # 5. 관리자 전용 메뉴 (오직 관리자 기기에만 노출)
+    # 6. 관리자 전용 메뉴 (오직 등록된 ADMIN_USER_ID에만 노출)
     # ==========================================
     if user_id == ADMIN_USER_ID:
         st.divider()
         with st.expander("👑 관리자 전용 설정", expanded=True):
-            st.success("🔓 관리자 기기로 접속되었습니다.")
+            st.success("🔓 관리자 권한이 확인되었습니다.")
             
             if st.button("📌 현재 내 위치를 교실 기준점으로 설정하기", use_container_width=True):
                 global_store["base_location"] = (user_lat, user_lon)

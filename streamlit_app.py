@@ -1,6 +1,7 @@
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
+from geopy.geocoders import Nominatim
 import uuid
 import folium
 from streamlit_folium import st_folium
@@ -11,19 +12,25 @@ st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon
 ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 
 # ==========================================
-# 1. 서버 전체 공유 저장소 및 Secrets 연동
+# 1. 서버 전체 공유 저장소 및 Geocoder 설정
 # ==========================================
 @st.cache_resource
 def get_global_store():
     admin_email = st.secrets.get("ADMIN_EMAIL", "seokhwanyun892@gmail.com")
     return {
         "base_location": None,  # (위도, 경도)
-        "base_address": "",     # 교실 주소 이름
+        "base_address": "",     # 장소 이름
         "active_users": set(),
         "admin_email": admin_email,
     }
 
 global_store = get_global_store()
+
+@st.cache_resource
+def get_geolocator():
+    return Nominatim(user_agent="streamlit_attendance_app")
+
+geolocator = get_geolocator()
 
 # ==========================================
 # 2. URL 쿼리 파라미터 기반 사용자 ID 고정
@@ -36,6 +43,12 @@ else:
 
 if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
+
+# 세션 상태에 위도/경도 초기값 설정 (주소 검색 연동용)
+if "input_lat" not in st.session_state:
+    st.session_state.input_lat = 33.450701
+if "input_lon" not in st.session_state:
+    st.session_state.input_lon = 126.570667
 
 # ==========================================
 # 3. 화면 탭 분리 (메인 화면 / 관리자 전용 화면)
@@ -60,16 +73,15 @@ with tab_user:
         user_lat = location['coords']['latitude']
         user_lon = location['coords']['longitude']
 
-        # 🗺️ Folium 지도 생성 (교실 마커 + 50m 반경 원 + 내 위치 마커)
+        # 🗺️ Folium 지도 생성 (기준점 마커 + 50m 반경 원 + 내 위치 마커)
         map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
         m = folium.Map(location=map_center, zoom_start=17, tiles="OpenStreetMap")
 
-        # 교실 기준점이 설정된 경우 원과 마커 표시
         if global_store["base_location"]:
             base_lat, base_lon = global_store["base_location"]
             folium.Marker(
                 [base_lat, base_lon], 
-                popup="🏫 교실 위치", 
+                popup="📍 기준 위치", 
                 icon=folium.Icon(color="red", icon="home")
             ).add_to(m)
             
@@ -84,7 +96,6 @@ with tab_user:
                 popup=f"{ALLOWED_RADIUS_METERS}m 자동 인식 범위"
             ).add_to(m)
 
-        # 내 위치 마커 표시
         folium.Marker(
             [user_lat, user_lon], 
             popup="📱 내 위치", 
@@ -93,32 +104,32 @@ with tab_user:
 
         st.subheader("🗺️ 실시간 위치 지도")
         st_folium(m, width=700, height=350)
-        st.caption("🔴 빨간색 원: 교실 50m 인식 범위 / 🔵 파란 마커: 내 위치")
+        st.caption("🔴 빨간색 원: 50m 인식 범위 / 🔵 파란 마커: 내 위치")
 
         st.divider()
 
         current_count = len(global_store["active_users"])
-        st.metric(label=f"📊 현재 교실({ALLOWED_RADIUS_METERS}m 반경) 내 실시간 인원수", value=f"{current_count} 명")
+        st.metric(label=f"📊 현재 지정 장소({ALLOWED_RADIUS_METERS}m 반경) 내 실시간 인원수", value=f"{current_count} 명")
         st.divider()
 
         if global_store["base_location"] is None:
-            st.warning("📍 교실 기준 위치가 아직 설정되지 않았습니다.")
-            st.info("💡 상단 '🔐 관리자 전용' 탭에서 교실 위치를 설정해 주세요.")
+            st.warning("📍 기준 위치가 아직 설정되지 않았습니다.")
+            st.info("💡 상단 '🔐 관리자 전용' 탭에서 위치를 설정해 주세요.")
         else:
             b_lat, b_lon = global_store["base_location"]
             distance = geodesic((user_lat, user_lon), (b_lat, b_lon)).meters
-            st.write(f"📍 현재 교실({global_store['base_address']})과의 거리: **약 {int(distance)}m**")
+            st.write(f"📍 현재 장소({global_store['base_address']})와의 거리: **약 {int(distance)}m**")
 
             if distance <= ALLOWED_RADIUS_METERS:
                 if user_id not in global_store["active_users"]:
                     global_store["active_users"].add(user_id)
                     st.rerun()
-                st.success(f"✅ 교실 반경 {ALLOWED_RADIUS_METERS}m 이내에 있어 **[자동 입실]** 처리되었습니다.")
+                st.success(f"✅ 반경 {ALLOWED_RADIUS_METERS}m 이내에 있어 **[자동 입실]** 처리되었습니다.")
             else:
                 if user_id in global_store["active_users"]:
                     global_store["active_users"].remove(user_id)
                     st.rerun()
-                st.error(f"❌ 교실 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
+                st.error(f"❌ 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
 
             st.divider()
             if st.button("🔄 실시간 인원수 새로고침", use_container_width=True, type="primary"):
@@ -146,30 +157,50 @@ with tab_admin:
         st.success(f"🔓 관리자 인증 완료 ({global_store['admin_email']})")
         st.divider()
 
-        st.subheader("📍 1. 교실 위치 지정")
+        st.subheader("📍 1. 위치 지정")
+        st.write("장소 이름이나 주소를 입력하고 **[주소로 위도/경도 찾기]** 버튼을 누르면 아래 입력 칸에 자동으로 좌표가 채워집니다.")
+
+        search_query = st.text_input("장소 이름 또는 주소 검색", placeholder="예: 제주대학교 또는 서울시청")
+
+        if st.button("🔍 주소로 위도/경도 찾기", use_container_width=True):
+            if search_query:
+                try:
+                    loc = geolocator.geocode(search_query)
+                    if loc:
+                        st.session_state.input_lat = loc.latitude
+                        st.session_state.input_lon = loc.longitude
+                        st.success(f"✅ 주소 검색 성공: {loc.address}")
+                        st.rerun()
+                    else:
+                        st.warning("⚠️ 해당 장소를 찾을 수 없습니다. 조금 더 정확한 주소로 입력해 주세요.")
+                except Exception as e:
+                    st.error(f"❌ 검색 중 오류가 발생했습니다: {e}")
+            else:
+                st.warning("⚠️ 검색할 주소를 입력해 주세요.")
+
         col1, col2 = st.columns(2)
         with col1:
-            input_lat = st.number_input("위도(Latitude)", value=33.450701, format="%.6f")
+            input_lat = st.number_input("위도(Latitude)", format="%.6f", key="input_lat")
         with col2:
-            input_lon = st.number_input("경도(Longitude)", value=126.570667, format="%.6f")
+            input_lon = st.number_input("경도(Longitude)", format="%.6f", key="input_lon")
 
-        input_address = st.text_input("교실 이름 또는 장소 설명", placeholder="예: 3학년 2반 교실")
+        input_address = st.text_input("장소 설명 이름", value=search_query, placeholder="예: 본관 3층 강의실")
 
-        if st.button("📌 해당 위/경도를 교실 기준점으로 저장", use_container_width=True, type="primary"):
+        if st.button("📌 해당 위/경도를 기준점으로 저장", use_container_width=True, type="primary"):
             global_store["base_location"] = (input_lat, input_lon)
             global_store["base_address"] = input_address if input_address else "지정 위치"
-            st.success(f"✅ 교실 기준점이 설정되었습니다! ({global_store['base_address']})")
+            st.success(f"✅ 기준점이 설정되었습니다! ({global_store['base_address']})")
             st.rerun()
 
         st.divider()
 
-        if st.button("📌 현재 내 브라우저 위치를 교실로 지정", use_container_width=True):
+        if st.button("📌 현재 내 브라우저 위치를 기준점으로 지정", use_container_width=True):
             if location and isinstance(location, dict) and "coords" in location and location["coords"]:
                 a_lat = location['coords']['latitude']
                 a_lon = location['coords']['longitude']
                 global_store["base_location"] = (a_lat, a_lon)
                 global_store["base_address"] = "현재 내 위치"
-                st.success("✅ 현재 브라우저 위치가 교실 기준점으로 저장되었습니다!")
+                st.success("✅ 현재 브라우저 위치가 기준점으로 저장되었습니다!")
                 st.rerun()
             else:
                 st.warning("⚠️ 브라우저 위치를 가져오지 못했습니다. '사용자 화면' 탭에서 위치 권한이 허용되어 있는지 확인해 주세요.")

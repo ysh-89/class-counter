@@ -17,7 +17,7 @@ ALLOWED_RADIUS_METERS = 100  # 자동 감지 반경 (100m)
 # 🔒 관리자 전용 비밀번호 설정
 # Streamlit Secrets에 ADMIN_PASSWORD를 설정하거나 아래 기본값을 사용합니다.
 # ==========================================
-ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "1234")
+ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "yunseokhwan")
 
 # ==========================================
 # 1. 서버 전체 공유 저장소 (실시간 데이터)

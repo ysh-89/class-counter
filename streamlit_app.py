@@ -107,13 +107,13 @@ st.metric(label="📊 현재 교실(100m 반경) 내 실시간 인원수", value
 st.divider()
 
 # ==========================================
-# 5. 위치 수집 및 자동 카운팅 로직 (KeyError 예방 안전 코드 적용)
+# 5. 위치 수집 및 자동 카운팅 로직 (KeyError 예방 안전 코드)
 # ==========================================
 location = get_geolocation()
 
 if location is None:
     st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
-elif "coords" not in location or location["coords"] is None:
+elif not isinstance(location, dict) or "coords" not in location or location["coords"] is None:
     st.warning("⚠️ 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지, 브라우저 위치 권한을 허용했는지 확인해 주세요.")
 else:
     user_lat = location['coords']['latitude']

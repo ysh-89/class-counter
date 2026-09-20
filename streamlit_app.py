@@ -1,8 +1,9 @@
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
-import pandas as pd
 import uuid
+import folium
+from streamlit_folium import st_folium
 
 # 페이지 기본 설정
 st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
@@ -59,19 +60,40 @@ with tab_user:
         user_lat = location['coords']['latitude']
         user_lon = location['coords']['longitude']
 
-        # 🗺️ 스트리밋 기본 지도 표시 (API 키 불필요)
-        map_data = pd.DataFrame({'lat': [user_lat], 'lon': [user_lon]})
+        # 🗺️ Folium 지도 생성 (교실 마커 + 50m 반경 원 + 내 위치 마커)
+        map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
+        m = folium.Map(location=map_center, zoom_start=17, tiles="OpenStreetMap")
+
+        # 교실 기준점이 설정된 경우 원과 마커 표시
         if global_store["base_location"]:
             base_lat, base_lon = global_store["base_location"]
-            # 교실 위치도 지도에 함께 표시하기 위해 데이터 추가
-            map_data = pd.DataFrame({
-                'lat': [user_lat, base_lat],
-                'lon': [user_lon, base_lon]
-            })
-        
+            folium.Marker(
+                [base_lat, base_lon], 
+                popup="🏫 교실 위치", 
+                icon=folium.Icon(color="red", icon="home")
+            ).add_to(m)
+            
+            folium.Circle(
+                location=[base_lat, base_lon],
+                radius=ALLOWED_RADIUS_METERS,
+                color="#FF0000",
+                weight=2,
+                fill=True,
+                fill_color="#FF0000",
+                fill_opacity=0.2,
+                popup=f"{ALLOWED_RADIUS_METERS}m 자동 인식 범위"
+            ).add_to(m)
+
+        # 내 위치 마커 표시
+        folium.Marker(
+            [user_lat, user_lon], 
+            popup="📱 내 위치", 
+            icon=folium.Icon(color="blue", icon="user")
+        ).add_to(m)
+
         st.subheader("🗺️ 실시간 위치 지도")
-        st.map(map_data, zoom=16)
-        st.caption("🔵 파란점: 내 위치 / (기준점이 설정된 경우 함께 표시됩니다)")
+        st_folium(m, width=700, height=350)
+        st.caption("🔴 빨간색 원: 교실 50m 인식 범위 / 🔵 파란 마커: 내 위치")
 
         st.divider()
 

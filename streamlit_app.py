@@ -24,14 +24,12 @@ def get_global_store():
 global_store = get_global_store()
 
 # ==========================================
-# 2. URL 쿼리 파라미터 기반 사용자 ID 고정 (무한 로딩 및 중복 방지)
+# 2. URL 쿼리 파라미터 기반 사용자 ID 고정 (중복 증가 방지)
 # ==========================================
-# 주소창(Query Params)에서 id 가져오기
 if "uid" in st.query_params:
     user_id = st.query_params["uid"]
 else:
-    # URL에 id가 없다면 새로 생성하여 URL 주소창에 추가
-    user_id = str(uuid.uuid4())[:8]  # 식별 가능한 8자리 고유 ID
+    user_id = str(uuid.uuid4())[:8]
     st.query_params["uid"] = user_id
 
 # 관리자 인증 상태 세션
@@ -133,3 +131,12 @@ else:
                 global_store["active_users"].remove(user_id)
                 st.rerun()
             st.error(f"❌ 교실 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
+
+        # ==========================================
+        # 6. 초록색 상자 아래 실시간 인원 확인/새로고침 버튼
+        # ==========================================
+        st.divider()
+        if st.button("🔄 현재 실시간 인원수 새로고침", use_container_width=True, type="primary"):
+            st.rerun()
+            
+        st.info(f"💡 현재 교실 내 실시간 합산 인원: **{len(global_store['active_users'])}명**")

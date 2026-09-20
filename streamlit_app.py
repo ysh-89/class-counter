@@ -111,8 +111,11 @@ st.divider()
 # ==========================================
 location = get_geolocation()
 
+# location 결과값 검증 (KeyError 방지)
 if location is None:
     st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
+elif "coords" not in location or location["coords"] is None:
+    st.warning("⚠️ 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지, 위치 권한을 허용했는지 확인해 주세요.")
 else:
     user_lat = location['coords']['latitude']
     user_lon = location['coords']['longitude']
@@ -147,6 +150,13 @@ else:
                 global_store["active_users"].remove(user_id)
                 st.rerun()
             st.error(f"❌ 교실 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
+
+        # 실시간 인원 확인/새로고침 버튼
+        st.divider()
+        if st.button("🔄 현재 실시간 인원수 새로고침", use_container_width=True, type="primary"):
+            st.rerun()
+            
+        st.info(f"💡 현재 교실 내 실시간 합산 인원: **{len(global_store['active_users'])}명**")
 
         # ==========================================
         # 6. 실시간 인원 확인/새로고침 버튼

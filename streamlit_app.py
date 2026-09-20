@@ -8,7 +8,7 @@ from streamlit_folium import st_folium
 # 페이지 기본 설정
 st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
 
-ALLOWED_RADIUS_METERS = 100  # 자동 감지 반경 (100m)
+ALLOWED_RADIUS_METERS = 10  # 자동 감지 반경 (10m로 수정)
 
 # ==========================================
 # 1. 서버 전체 공유 저장소 (실시간 데이터 & 동적 비밀번호)
@@ -98,7 +98,7 @@ with st.sidebar:
 # 4. 메인 화면 UI (일반 사용자 화면)
 # ==========================================
 st.title("🏫 위치 기반 자동 인원 카운터")
-st.write("위치 권한을 승인하면 반경 100m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
+st.write(f"위치 권한을 승인하면 반경 {ALLOWED_RADIUS_METERS}m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
 
 # ==========================================
 # 5. 위치 수집 및 자동 카운팅 로직 (KeyError 예방 안전 코드)
@@ -121,17 +121,16 @@ else:
             st.success("✅ 현재 위치가 교실 기준점으로 저장되었습니다!")
             st.rerun()
 
-    # 🗺️ [지도 표시 부분] API 키 없이 깔끔한 지도 및 100m 반투명 하얀색 원
+    # 🗺️ [지도 표시 부분] 10m 인식 범위 지도 시각화 (10m 관찰을 위해 줌 확대 level 19)
     map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
     
-    # API 키 제한이 없는 기본 선명한 지도 타일 사용
     m = folium.Map(
         location=map_center, 
-        zoom_start=17, 
+        zoom_start=19, 
         tiles="OpenStreetMap"
     )
 
-    # 교실 기준점이 설정되어 있다면 지도에 기준점 마커 & 100m 반투명 하얀색 범위 원 추가
+    # 교실 기준점이 설정되어 있다면 지도에 기준점 마커 & 10m 반투명 하얀색 범위 원 추가
     if global_store["base_location"]:
         base_lat, base_lon = global_store["base_location"]
         
@@ -142,7 +141,7 @@ else:
             icon=folium.Icon(color="red", icon="home")
         ).add_to(m)
 
-        # 100m 인식 범위 (반투명 하얀색 원)
+        # 10m 인식 범위 (반투명 하얀색 원)
         folium.Circle(
             location=[base_lat, base_lon],
             radius=ALLOWED_RADIUS_METERS,
@@ -151,7 +150,7 @@ else:
             fill=True,
             fill_color="#FFFFFF",    # 원 내부 채우기: 하얀색
             fill_opacity=0.45,       # 투명도 (45% 반투명)
-            popup="100m 자동 인식 범위"
+            popup=f"{ALLOWED_RADIUS_METERS}m 자동 인식 범위"
         ).add_to(m)
 
     # 현재 내 위치 마커 (파란색)
@@ -168,7 +167,7 @@ else:
 
     # 현재 반경 내 자동 감지된 실시간 인원수 표시
     current_count = len(global_store["active_users"])
-    st.metric(label="📊 현재 교실(100m 반경) 내 실시간 인원수", value=f"{current_count} 명")
+    st.metric(label=f"📊 현재 교실({ALLOWED_RADIUS_METERS}m 반경) 내 실시간 인원수", value=f"{current_count} 명")
 
     st.divider()
 
@@ -183,7 +182,7 @@ else:
 
         st.write(f"📍 현재 교실과의 거리: **약 {int(distance)}m**")
 
-        # 3) 반경 100m 안팎 판정 및 자동 집계
+        # 3) 반경 10m 안팎 판정 및 자동 집계
         if distance <= ALLOWED_RADIUS_METERS:
             if user_id not in global_store["active_users"]:
                 global_store["active_users"].add(user_id)

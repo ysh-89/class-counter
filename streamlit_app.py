@@ -8,7 +8,7 @@ from streamlit_folium import st_folium
 # 페이지 기본 설정
 st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
 
-ALLOWED_RADIUS_METERS = 50  # 자동 감지 반경 (10m로 수정)
+ALLOWED_RADIUS_METERS = 10  # 자동 감지 반경 (10m로 수정)
 
 # ==========================================
 # 1. 서버 전체 공유 저장소 (실시간 데이터 & 동적 비밀번호)

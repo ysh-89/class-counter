@@ -2,6 +2,8 @@ import streamlit as st
 from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
 import uuid
+import folium
+from streamlit_folium import st_folium
 
 # 페이지 기본 설정
 st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
@@ -98,14 +100,6 @@ with st.sidebar:
 st.title("🏫 위치 기반 자동 인원 카운터")
 st.write("위치 권한을 승인하면 반경 100m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
 
-st.divider()
-
-# 현재 반경 내 자동 감지된 실시간 인원수 표시
-current_count = len(global_store["active_users"])
-st.metric(label="📊 현재 교실(100m 반경) 내 실시간 인원수", value=f"{current_count} 명")
-
-st.divider()
-
 # ==========================================
 # 5. 위치 수집 및 자동 카운팅 로직 (KeyError 예방 안전 코드)
 # ==========================================
@@ -127,7 +121,54 @@ else:
             st.success("✅ 현재 위치가 교실 기준점으로 저장되었습니다!")
             st.rerun()
 
-    # 1) 기준점(교실 위치) 설정 여부 확인
+    # 🗺️ [지도 표시 부분] 요청하신 '안내문 바로 아래 지도 및 100m 반투명 하얀색 원'
+    map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
+    
+    # 어두운 배경(다크모드)에서도 반투명 하얀색 원이 잘 보이도록 카토DB 다크 타일 또는 일반 타일 적용
+    m = folium.Map(location=map_center, zoom_start=17, tiles="CartoDB dark_matter")
+
+    # 교실 기준점이 설정되어 있다면 지도에 기준점 마커 & 100m 반투명 하얀색 범위 원 추가
+    if global_store["base_location"]:
+        base_lat, base_lon = global_store["base_location"]
+        
+        # 교실 마커
+        folium.Marker(
+            [base_lat, base_lon], 
+            popup="🏫 교실 위치", 
+            icon=folium.Icon(color="red", icon="home")
+        ).add_to(m)
+
+        # 100m 인식 범위 (반투명 하얀색 원)
+        folium.Circle(
+            location=[base_lat, base_lon],
+            radius=ALLOWED_RADIUS_METERS,
+            color="#FFFFFF",         # 테두리 색상: 하얀색
+            weight=2,                # 테두리 두께
+            fill=True,
+            fill_color="#FFFFFF",    # 채우기 색상: 하얀색
+            fill_opacity=0.35,       # 투명도 (35% 반투명)
+            popup="100m 자동 인식 범위"
+        ).add_to(m)
+
+    # 현재 내 위치 마커 (파란색)
+    folium.Marker(
+        [user_lat, user_lon], 
+        popup="📱 내 위치", 
+        icon=folium.Icon(color="blue", icon="user")
+    ).add_to(m)
+
+    # Streamlit 화면에 지도 출력
+    st_folium(m, width=700, height=350)
+
+    st.divider()
+
+    # 현재 반경 내 자동 감지된 실시간 인원수 표시
+    current_count = len(global_store["active_users"])
+    st.metric(label="📊 현재 교실(100m 반경) 내 실시간 인원수", value=f"{current_count} 명")
+
+    st.divider()
+
+    # 1) 기준점(교실 위치) 설정 여부 확인 및 판정
     if global_store["base_location"] is None:
         st.warning("📍 교실 기준 위치가 아직 설정되지 않았습니다.")
         st.info("💡 관리자 메뉴에서 비밀번호 입력 후 교실 위치를 지정해 주세요.")

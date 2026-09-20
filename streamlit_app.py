@@ -14,7 +14,6 @@ ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 # ==========================================
 @st.cache_resource
 def get_global_store():
-    # Streamlit Secrets에서 관리자 이메일과 카카오 JS 키를 안전하게 불러옵니다.
     admin_email = st.secrets.get("ADMIN_EMAIL", "seokhwanyun892@gmail.com")
     kakao_key = st.secrets.get("KAKAO_JS_KEY", "")
     
@@ -52,7 +51,8 @@ with tab_user:
     st.title("🏫 위치 기반 자동 인원 카운터")
     st.write(f"위치 권한을 승인하면 반경 {ALLOWED_RADIUS_METERS}m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
 
-    location = get_geolocation()
+    # 🔑 오류 해결: 고유 key 부여
+    location = get_geolocation(key="user_geolocation_component")
 
     if location is None:
         st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
@@ -62,11 +62,10 @@ with tab_user:
         user_lat = location['coords']['latitude']
         user_lon = location['coords']['longitude']
 
-        # 🗺️ 카카오맵 표시 (사용자용)
         kakao_js_key = global_store["kakao_js_key"]
         
         if not kakao_js_key:
-            st.error("⚠️ Streamlit Secrets에 'KAKAO_JS_KEY'가 설정되어 있지 않습니다. 설정 후 다시 시도해 주세요.")
+            st.error("⚠️ Streamlit Secrets에 'KAKAO_JS_KEY'가 설정되어 있지 않습니다. 설정 후 다시 시도해 주세요[cite: 4].")
         else:
             base_lat = global_store["base_location"][0] if global_store["base_location"] else user_lat
             base_lon = global_store["base_location"][1] if global_store["base_location"] else user_lon
@@ -85,12 +84,10 @@ with tab_user:
 
                 var hasBase = {has_base};
                 if (hasBase) {{
-                    // 교실 위치 마커 (빨간색)
                     var basePosition = new kakao.maps.LatLng({base_lat}, {base_lon});
                     var baseMarker = new kakao.maps.Marker({{ position: basePosition }});
                     baseMarker.setMap(map);
 
-                    // 50m 반경 원
                     var circle = new kakao.maps.Circle({{
                         center: basePosition,
                         radius: {ALLOWED_RADIUS_METERS},
@@ -103,7 +100,6 @@ with tab_user:
                     circle.setMap(map);
                 }}
 
-                // 내 위치 마커 (파란색)
                 var userPosition = new kakao.maps.LatLng({user_lat}, {user_lon});
                 var userMarker = new kakao.maps.Marker({{ position: userPosition }});
                 userMarker.setMap(map);
@@ -162,10 +158,7 @@ with tab_admin:
         st.success(f"🔓 관리자 인증 완료 ({global_store['admin_email']})")
         st.divider()
 
-        # 1. 위치 지정
         st.subheader("📍 1. 교실 위치 지정")
-        st.write("기준이 될 위도와 경도를 입력하여 교실 위치를 설정합니다.")
-
         col1, col2 = st.columns(2)
         with col1:
             input_lat = st.number_input("위도(Latitude)", value=33.450701, format="%.6f")
@@ -177,14 +170,14 @@ with tab_admin:
         if st.button("📌 해당 위/경도를 교실 기준점으로 저장", use_container_width=True, type="primary"):
             global_store["base_location"] = (input_lat, input_lon)
             global_store["base_address"] = input_address if input_address else "지정 위치"
-            st.success(f"✅ 교실 기준점이 성공적으로 설정되었습니다! ({global_store['base_address']})")
+            st.success(f"✅ 교실 기준점이 설정되었습니다! ({global_store['base_address']})")
             st.rerun()
 
         st.divider()
 
-        # 2. 현재 내 브라우저 위치로 즉시 지정 버튼
         if st.button("📌 현재 내 브라우저 위치를 교실로 지정", use_container_width=True):
-            location_admin = get_geolocation()
+            # 🔑 관리자 화면용 고유 key 부여
+            location_admin = get_geolocation(key="admin_geolocation_component")
             if location_admin and isinstance(location_admin, dict) and "coords" in location_admin:
                 a_lat = location_admin['coords']['latitude']
                 a_lon = location_admin['coords']['longitude']
@@ -193,7 +186,7 @@ with tab_admin:
                 st.success("✅ 현재 브라우저 위치가 교실 기준점으로 저장되었습니다!")
                 st.rerun()
             else:
-                st.warning("⚠️ 브라우저 위치를 가져오지 못했습니다. '사용자 화면' 탭을 먼저 방문해 위치 권한을 허용해 주세요.")
+                st.warning("⚠️ 브라우저 위치를 가져오지 못했습니다. 다시 시도해 주세요.")
 
         st.divider()
 

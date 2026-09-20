@@ -14,8 +14,6 @@ st.set_page_config(
 
 # ==========================================
 # 카카오 JavaScript Key
-# GitHub에는 저장하지 않음
-# Streamlit Secrets에서 가져옴
 # ==========================================
 
 KAKAO_JS_KEY = st.secrets["KAKAO_JS_KEY"]
@@ -23,9 +21,6 @@ KAKAO_JS_KEY = st.secrets["KAKAO_JS_KEY"]
 
 # ==========================================
 # 교실 위치
-#
-# TODO:
-# 실제 테스트할 장소의 좌표로 변경
 # ==========================================
 
 CLASS_LAT = 33.000000
@@ -34,7 +29,6 @@ CLASS_LON = 126.000000
 
 # ==========================================
 # 교실로 인정할 반경
-# 단위: m
 # ==========================================
 
 RADIUS_M = 100
@@ -58,7 +52,7 @@ st.info(
 
 
 # ==========================================
-# 학생 참여 버튼
+# 현재 위치 확인
 # ==========================================
 
 st.subheader("현재 위치 확인")
@@ -85,54 +79,100 @@ html_code = f"""
 
 body {{
     margin: 0;
+    padding: 0;
     font-family: Arial, sans-serif;
 }}
+
+
+/* 지도 */
 
 #map {{
     width: 100%;
     height: 300px;
+    border-radius: 10px;
+    overflow: hidden;
 }}
+
+
+/* 버튼 */
 
 button {{
     width: 100%;
     padding: 15px;
     margin-top: 10px;
+
     font-size: 16px;
+    font-weight: bold;
+
     border: none;
     border-radius: 8px;
+
     cursor: pointer;
 }}
 
+
+/* 결과 */
+
 #result {{
+
     margin-top: 15px;
+
     padding: 15px;
+
     border-radius: 8px;
+
     background: #f1f1f1;
+
     text-align: center;
+
 }}
 
+
 </style>
+
 
 <script
     src="https://dapi.kakao.com/v2/maps/sdk.js?appkey={KAKAO_JS_KEY}">
 </script>
 
+
 </head>
+
 
 <body>
 
+
+<!-- ======================================
+     지도
+======================================= -->
+
 <div id="map"></div>
 
+
+<!-- ======================================
+     현재 위치 확인 버튼
+======================================= -->
+
 <button onclick="checkLocation()">
+
 📍 현재 위치 확인
+
 </button>
 
+
+<!-- ======================================
+     결과
+======================================= -->
+
 <div id="result">
+
 아직 위치를 확인하지 않았습니다.
+
 </div>
 
 
 <script>
+
 
 // ==========================================
 // 교실 위치
@@ -445,6 +485,7 @@ function calculateDistance(
 
 </script>
 
+
 </body>
 
 </html>
@@ -452,7 +493,7 @@ function calculateDistance(
 
 
 # ==========================================
-# HTML + JavaScript 실행
+# HTML 실행
 # ==========================================
 
 st.iframe(

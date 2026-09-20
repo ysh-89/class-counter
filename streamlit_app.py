@@ -8,15 +8,15 @@ from streamlit_folium import st_folium
 # 페이지 기본 설정
 st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
 
-ALLOWED_RADIUS_METERS = 30  # 실내 GPS 오차를 고려해 감지 반경을 30m로 설정
+ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 
 # ==========================================
-# 1. 서버 전체 공유 저장소 (이메일 기반 관리)
+# 1. 서버 전체 공유 저장소 (관리자 이메일 지정)
 # ==========================================
 @st.cache_resource
 def get_global_store():
-    # 기본 관리자 이메일 설정 (secrets 또는 기본값)
-    default_email = st.secrets.get("ADMIN_EMAIL", "admin@example.com")
+    # 기본 관리자 이메일을 실제 사용하시는 이메일로 설정했습니다.
+    default_email = st.secrets.get("ADMIN_EMAIL", "seokhwanyun892@gmail.com")
     return {
         "base_location": None, 
         "active_users": set(),
@@ -72,7 +72,7 @@ with tab_user:
         map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
         m = folium.Map(location=map_center, zoom_start=18, tiles="OpenStreetMap")
 
-        # 교실 위치 마커 및 30m 반투명 원
+        # 교실 위치 마커 및 범위 원
         if global_store["base_location"]:
             base_lat, base_lon = global_store["base_location"]
             folium.Marker([base_lat, base_lon], popup="🏫 교실 위치", icon=folium.Icon(color="red", icon="home")).add_to(m)
@@ -135,7 +135,6 @@ with tab_admin:
         admin_email_input = st.text_input("등록된 관리자 이메일을 입력하세요", placeholder="example@email.com", key="main_admin_email_input")
         
         if st.button("이메일로 로그인하기", key="main_admin_login_btn", use_container_width=True, type="primary"):
-            # 입력한 이메일 공백 제거 및 소문자 변환 후 비교
             clean_input = admin_email_input.strip().lower()
             target_email = global_store["admin_email"].strip().lower()
 

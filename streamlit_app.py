@@ -1,223 +1,120 @@
 import streamlit as st
 from streamlit_js_eval import get_geolocation
 from geopy.distance import geodesic
-from geopy.geocoders import Nominatim
+import pandas as pd
 import uuid
 import folium
+from folium.plugins import MarkerCluster
 from streamlit_folium import st_folium
+import time
 
-# 페이지 기본 설정
-st.set_page_config(page_title="위치 기반 자동 인원 카운터", page_icon="🏫", layout="centered")
+# 화면 넓게 쓰기
+st.set_page_config(page_title="제주 카페 인원 확인", layout="wide")
 
-ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
+# --- 1. 상태 초기화 (세션 관리) ---
+if 'user_id' not in st.session_state:
+    st.session_state.user_id = str(uuid.uuid4())
+if 'base_location' not in st.session_state:
+    st.session_state.base_location = None
+if 'base_address' not in st.session_state:
+    st.session_state.base_address = "미지정"
+if 'active_users' not in st.session_state:
+    st.session_state.active_users = {}
 
-# ==========================================
-# 1. 서버 전체 공유 저장소 및 Geocoder 설정
-# ==========================================
-@st.cache_resource
-def get_global_store():
-    admin_email = st.secrets.get("ADMIN_EMAIL", "seokhwanyun892@gmail.com")
-    return {
-        "base_location": None,  # (위도, 경도)
-        "base_address": "",     # 장소 이름
-        "active_users": set(),
-        "admin_email": admin_email,
+# --- 2. 카페 데이터 불러오기 (캐싱 적용으로 속도 향상) ---
+@st.cache_data
+def load_cafe_data():
+    try:
+        df = pd.read_csv('store.csv', encoding='utf-8')
+        # '카페'가 포함된 업종만 필터링
+        cafe_df = df[df['상권업종소분류명'].str.contains('카페', na=False)]
+        return cafe_df[['상호명', '위도', '경도', '도로명주소']].dropna().reset_index(drop=True)
+    except Exception as e:
+        st.error("데이터를 불러오지 못했습니다. 동일한 폴더에 'store.csv'가 있는지 확인해주세요.")
+        return pd.DataFrame(columns=['상호명', '위도', '경도', '도로명주소'])
+
+cafe_df = load_cafe_data()
+
+# --- 3. 사용자 위치 정보 가져오기 ---
+loc = get_geolocation()
+user_lat, user_lon = None, None
+
+if loc and 'coords' in loc:
+    user_lat = loc['coords']['latitude']
+    user_lon =웹 지도 API(카카오맵, 네이버 지도, 구글 맵 등)와 자바스크립트를 활용해 구현할 수 있습니다. 국내에서 널리 쓰이는 **카카오맵 API**를 기준으로, 지도에 마커를 띄우고 클릭 시 위치와 인원수를 보여주는 전체 흐름을 구성하는 방법입니다.
+
+## 1. 프론트엔드: 지도 표시 및 클릭 이벤트 구현
+
+데이터베이스나 서버 API에서 카페의 좌표, 주소, 실시간 인원수 데이터를 받아왔다고 가정하고 화면에 렌더링하는 코드입니다.
+
+```javascript
+// 1. 지도 초기화
+var mapContainer = document.getElementById('map'), // 지도를 표시할 div 
+    mapOption = { 
+        center: new kakao.maps.LatLng(33.450701, 126.570667), // 지도의 중심좌표
+        level: 3 // 지도의 확대 레벨
+    };
+var map = new kakao.maps.Map(mapContainer, mapOption); 
+
+// 2. 서버에서 받아온 가상의 카페 데이터 배열
+var cafes = [
+    { 
+        name: '제주바당카페', 
+        latlng: new kakao.maps.LatLng(33.450705, 126.570677), 
+        address: '제주시 애월읍 123',
+        peopleCount: 12 
+    },
+    { 
+        name: '오름커피', 
+        latlng: new kakao.maps.LatLng(33.450936, 126.569477), 
+        address: '제주시 구좌읍 456',
+        peopleCount: 5 
     }
+];
 
-global_store = get_global_store()
+// 3. 마커 및 인포윈도우(정보창) 생성
+cafes.forEach(function(cafe) {
+    // 지도에 마커 생성
+    var marker = new kakao.maps.Marker({
+        map: map,
+        position: cafe.latlng
+    });
 
-@st.cache_resource
-def get_geolocator():
-    return Nominatim(user_agent="streamlit_attendance_app")
+    // 마커 클릭 시 보여줄 HTML 컨텐츠 (위치, 인원수, 위치지정 버튼)
+    var iwContent = `
+        <div style="padding:10px; width:200px; font-family:sans-serif;">
+            <h4 style="margin: 0 0 5px 0;">${cafe.name}</h4>
+            <p style="margin: 0 0 5px 0; font-size: 12px; color: #666;">위치: ${cafe.address}</p>
+            <p style="margin: 0 0 10px 0; font-size: 14px; font-weight: bold;">
+                현재 인원: <span style="color: #ff5722;">${cafe.peopleCount}명</span>
+            </p>
+            <button onclick="setTargetLocation('${cafe.name}', ${cafe.latlng.getLat()}, ${cafe.latlng.getLng()})" 
+                    style="width: 100%; padding: 5px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer;">
+                위치 지정하기
+            </button>
+        </div>
+    `;
 
-geolocator = get_geolocator()
+    var infowindow = new kakao.maps.InfoWindow({
+        content: iwContent,
+        removable: true // 닫기 버튼 표시
+    });
 
-# ==========================================
-# 2. URL 쿼리 파라미터 기반 사용자 ID 고정
-# ==========================================
-if "uid" in st.query_params:
-    user_id = st.query_params["uid"]
-else:
-    user_id = str(uuid.uuid4())[:8]
-    st.query_params["uid"] = user_id
+    // 4. 마커 클릭 이벤트 등록
+    kakao.maps.event.addListener(marker, 'click', function() {
+        // 기존에 열린 인포윈도우가 있다면 닫는 로직을 추가할 수 있습니다.
+        infowindow.open(map, marker);
+    });
+});
 
-if "is_admin" not in st.session_state:
-    st.session_state.is_admin = False
-
-# 세션 상태에 위도/경도 초기값 설정 (주소 검색 연동용)
-if "input_lat" not in st.session_state:
-    st.session_state.input_lat = 33.450701
-if "input_lon" not in st.session_state:
-    st.session_state.input_lon = 126.570667
-
-# ==========================================
-# 3. 화면 탭 분리 (메인 화면 / 관리자 전용 화면)
-# ==========================================
-tab_user, tab_admin = st.tabs(["📱 사용자 화면", "🔐 관리자 전용"])
-
-# 공통으로 브라우저 위치 가져오기
-location = get_geolocation()
-
-# ------------------------------------------
-# [탭 1] 일반 사용자 화면
-# ------------------------------------------
-with tab_user:
-    st.title("🏫 위치 기반 자동 인원 카운터")
-    st.write(f"위치 권한을 승인하면 반경 {ALLOWED_RADIUS_METERS}m 진입 시 **자동 입실**, 범위를 벗어나면 **자동 퇴실** 처리됩니다.")
-
-    if location is None:
-        st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
-    elif not isinstance(location, dict) or "coords" not in location or location["coords"] is None:
-        st.warning("⚠️ 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지, 브라우저 위치 권한을 허용했는지 확인해 주세요.")
-    else:
-        user_lat = location['coords']['latitude']
-        user_lon = location['coords']['longitude']
-
-        # 🗺️ Folium 지도 생성 (기준점 마커 + 50m 반경 원 + 내 위치 마커)
-        map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
-        m = folium.Map(location=map_center, zoom_start=17, tiles="OpenStreetMap")
-
-        if global_store["base_location"]:
-            base_lat, base_lon = global_store["base_location"]
-            folium.Marker(
-                [base_lat, base_lon], 
-                popup="📍 기준 위치", 
-                icon=folium.Icon(color="red", icon="home")
-            ).add_to(m)
-            
-            folium.Circle(
-                location=[base_lat, base_lon],
-                radius=ALLOWED_RADIUS_METERS,
-                color="#FF0000",
-                weight=2,
-                fill=True,
-                fill_color="#FF0000",
-                fill_opacity=0.2,
-                popup=f"{ALLOWED_RADIUS_METERS}m 자동 인식 범위"
-            ).add_to(m)
-
-        folium.Marker(
-            [user_lat, user_lon], 
-            popup="📱 내 위치", 
-            icon=folium.Icon(color="blue", icon="user")
-        ).add_to(m)
-
-        st.subheader("🗺️ 실시간 위치 지도")
-        st_folium(m, width=700, height=350)
-        st.caption("🔴 빨간색 원: 50m 인식 범위 / 🔵 파란 마커: 내 위치")
-
-        st.divider()
-
-        current_count = len(global_store["active_users"])
-        st.metric(label=f"📊 현재 지정 장소({ALLOWED_RADIUS_METERS}m 반경) 내 실시간 인원수", value=f"{current_count} 명")
-        st.divider()
-
-        if global_store["base_location"] is None:
-            st.warning("📍 기준 위치가 아직 설정되지 않았습니다.")
-            st.info("💡 상단 '🔐 관리자 전용' 탭에서 위치를 설정해 주세요.")
-        else:
-            b_lat, b_lon = global_store["base_location"]
-            distance = geodesic((user_lat, user_lon), (b_lat, b_lon)).meters
-            st.write(f"📍 현재 장소({global_store['base_address']})와의 거리: **약 {int(distance)}m**")
-
-            if distance <= ALLOWED_RADIUS_METERS:
-                if user_id not in global_store["active_users"]:
-                    global_store["active_users"].add(user_id)
-                    st.rerun()
-                st.success(f"✅ 반경 {ALLOWED_RADIUS_METERS}m 이내에 있어 **[자동 입실]** 처리되었습니다.")
-            else:
-                if user_id in global_store["active_users"]:
-                    global_store["active_users"].remove(user_id)
-                    st.rerun()
-                st.error(f"❌ 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다.")
-
-            st.divider()
-            if st.button("🔄 실시간 인원수 새로고침", use_container_width=True, type="primary"):
-                st.rerun()
-
-# ------------------------------------------
-# [탭 2] 관리자 전용 화면
-# ------------------------------------------
-with tab_admin:
-    st.header("🔐 관리자 전용 페이지")
-
-    if not st.session_state.is_admin:
-        st.subheader("📧 관리자 이메일 로그인")
-        admin_email_input = st.text_input("등록된 관리자 이메일을 입력하세요", placeholder="seokhwanyun892@gmail.com")
-        
-        if st.button("이메일로 로그인하기", use_container_width=True, type="primary"):
-            if admin_email_input.strip().lower() == global_store["admin_email"].lower():
-                st.session_state.is_admin = True
-                st.success("관리자 인증 성공!")
-                st.rerun()
-            else:
-                st.error("등록된 관리자 이메일과 일치하지 않습니다.")
-
-    else:
-        st.success(f"🔓 관리자 인증 완료 ({global_store['admin_email']})")
-        st.divider()
-
-        st.subheader("📍 1. 위치 지정")
-        st.write("장소 이름이나 주소를 입력하고 **[주소로 위도/경도 찾기]** 버튼을 누르면 아래 입력 칸에 자동으로 좌표가 채워집니다.")
-
-        search_query = st.text_input("장소 이름 또는 주소 검색", placeholder="예: 제주대학교 또는 서울시청")
-
-        if st.button("🔍 주소로 위도/경도 찾기", use_container_width=True):
-            if search_query:
-                try:
-                    loc = geolocator.geocode(search_query)
-                    if loc:
-                        st.session_state.input_lat = loc.latitude
-                        st.session_state.input_lon = loc.longitude
-                        st.success(f"✅ 주소 검색 성공: {loc.address}")
-                        st.rerun()
-                    else:
-                        st.warning("⚠️ 해당 장소를 찾을 수 없습니다. 조금 더 정확한 주소로 입력해 주세요.")
-                except Exception as e:
-                    st.error(f"❌ 검색 중 오류가 발생했습니다: {e}")
-            else:
-                st.warning("⚠️ 검색할 주소를 입력해 주세요.")
-
-        col1, col2 = st.columns(2)
-        with col1:
-            input_lat = st.number_input("위도(Latitude)", format="%.6f", key="input_lat")
-        with col2:
-            input_lon = st.number_input("경도(Longitude)", format="%.6f", key="input_lon")
-
-        input_address = st.text_input("장소 설명 이름", value=search_query, placeholder="예: 본관 3층 강의실")
-
-        if st.button("📌 해당 위/경도를 기준점으로 저장", use_container_width=True, type="primary"):
-            global_store["base_location"] = (input_lat, input_lon)
-            global_store["base_address"] = input_address if input_address else "지정 위치"
-            st.success(f"✅ 기준점이 설정되었습니다! ({global_store['base_address']})")
-            st.rerun()
-
-        st.divider()
-
-        if st.button("📌 현재 내 브라우저 위치를 기준점으로 지정", use_container_width=True):
-            if location and isinstance(location, dict) and "coords" in location and location["coords"]:
-                a_lat = location['coords']['latitude']
-                a_lon = location['coords']['longitude']
-                global_store["base_location"] = (a_lat, a_lon)
-                global_store["base_address"] = "현재 내 위치"
-                st.success("✅ 현재 브라우저 위치가 기준점으로 저장되었습니다!")
-                st.rerun()
-            else:
-                st.warning("⚠️ 브라우저 위치를 가져오지 못했습니다. '사용자 화면' 탭에서 위치 권한이 허용되어 있는지 확인해 주세요.")
-
-        st.divider()
-
-        st.subheader("🔄 3. 데이터 초기화")
-        st.write(f"현재 등록된 접속자 수: **{len(global_store['active_users'])}명**")
-        if st.button("⚠️ 전체 데이터 및 기준점 초기화", use_container_width=True):
-            global_store["base_location"] = None
-            global_store["base_address"] = ""
-            global_store["active_users"] = set()
-            st.warning("데이터가 초기화되었습니다.")
-            st.rerun()
-
-        st.divider()
-
-        if st.button("🔒 관리자 로그아웃", use_container_width=True):
-            st.session_state.is_admin = False
-            st.rerun()
+// 5. 위치 지정 버튼 클릭 시 실행될 함수
+function setTargetLocation(name, lat, lng) {
+    // 이 위치를 도착지로 설정하거나 DB에 저장하는 로직을 수행합니다.
+    console.log("선택된 카페:", name);
+    console.log("좌표:", lat, lng);
+    alert(`${name}을(를) 목적지로 지정했습니다.`);
+    
+    // 예: 지도 중심을 해당 카페로 부드럽게 이동
+    var moveLatLon = new kakao.maps.LatLng(lat, lng);
+    map.panTo(moveLatLon);
+}

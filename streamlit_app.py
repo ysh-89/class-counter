@@ -1,7 +1,7 @@
 import streamlit as st
 from streamlit_js_eval import get_geolocation
-from geopy.distance import geodesic
 import pandas as pd
+import numpy as np
 import uuid
 import folium
 from streamlit_folium import st_folium
@@ -13,7 +13,7 @@ st.set_page_config(page_title="제주 실시간 카페/장소 인원 카운터",
 ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 
 # ==========================================
-# 1. 서버 전체 공유 저장소 및 CSV 데이터 로드
+# 1. 데이터 로드 및 캐싱
 # ==========================================
 @st.cache_resource
 def get_global_store():
@@ -21,21 +21,27 @@ def get_global_store():
     
     try:
         df = pd.read_csv("store.csv")
-    except Exception as e:
+    except Exception:
         df = pd.DataFrame(columns=['상호명', '상권업종소분류명', '시도명', '시군구명', '위도', '경도'])
     
     return {
         "base_location": None,       # (위도, 경도)
         "base_address": "",          # 선택된 장소 이름
-        "cafe_active_users": {},     # 장소별 실시간 입실 유저 목록 {"장소명": set(user_ids)}
+        "cafe_active_users": {},     # 장소별 실시간 입실 유저 목록
         "admin_email": admin_email,
         "store_df": df
     }
 
 global_store = get_global_store()
 
+# 초고속 거리 계산 함수 (위도/경도 -> 미터 단위를 numpy로 순식간에 계산)
+def fast_distance_meters(lat1, lon1, lat2, lon2):
+    lat_diff = (lat2 - lat1) * 111000
+    lon_diff = (lon2 - lon1) * 88000
+    return np.sqrt(lat_diff**2 + lon_diff**2)
+
 # ==========================================
-# 2. URL 쿼리 파라미터 기반 사용자 ID 고정
+# 2. 유저 고정 ID 생성
 # ==========================================
 if "uid" in st.query_params:
     user_id = st.query_params["uid"]
@@ -47,25 +53,18 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
 # ==========================================
-# 3. ⚙️ 좌측 사이드바 필터 설정
+# 3. ⚙️ 사이드바 필터 설정
 # ==========================================
 st.sidebar.header("⚙️ 지도 표시 필터")
 
-# 지역 선택
 region_list = ["전체", "제주시", "서귀포시"]
 selected_region = st.sidebar.selectbox("📍 지역 선택", options=region_list)
 
 st.sidebar.subheader("🏪 카테고리별 아이콘 표시")
-
-# store.csv 데이터 기준 카테고리 추출
 all_categories = list(global_store["store_df"]['상권업종소분류명'].unique()) if not global_store["store_df"].empty else ["카페", "편의점"]
 
-# 카테고리별 체크박스 생성
 selected_categories = []
-category_icons = {
-    "카페": "☕ 카페",
-    "편의점": "🏪 편의점"
-}
+category_icons = {"카페": "☕ 카페", "편의점": "🏪 편의점"}
 
 for cat in all_categories:
     label = category_icons.get(cat, f"📍 {cat}")
@@ -74,33 +73,27 @@ for cat in all_categories:
         selected_categories.append(cat)
 
 st.sidebar.divider()
-
-# 거리 범위 필터
 dist_filter = st.sidebar.select_slider(
     "📏 표시 거리 범위 (내 위치 기준)",
     options=["전체 보기", "1km 이내", "3km 이내", "5km 이내"],
     value="전체 보기"
 )
 
-st.sidebar.info("💡 카테고리 체크박스를 끄면 해당 아이콘이 지도에서 실시간으로 지워집니다.")
-
 # ==========================================
 # 4. 데이터 필터링
 # ==========================================
 df_data = global_store["store_df"].copy()
 
-# 지역 필터링
 if selected_region != "전체":
     df_data = df_data[df_data['시군구명'] == selected_region]
 
-# 카테고리 필터링 (체크 해제 시 해당 업종 완전 제외)
 if selected_categories:
     df_filtered = df_data[df_data['상권업종소분류명'].isin(selected_categories)].reset_index(drop=True)
 else:
     df_filtered = pd.DataFrame(columns=df_data.columns)
 
 # ==========================================
-# 5. 메인 화면 탭
+# 5. 메인 화면
 # ==========================================
 tab_user, tab_admin = st.tabs(["📱 사용자 화면 (카페 검색/선택)", "🔐 관리자 전용"])
 
@@ -113,20 +106,17 @@ with tab_user:
     if location is None:
         st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
     elif not isinstance(location, dict) or "coords" not in location or location["coords"] is None:
-        st.warning("⚠️ 위치 정보를 가져올 수 없습니다. 브라우저 GPS 권한을 확인해 주세요.")
+        st.warning("⚠️ 위치 정보를 가져올 수 없습니다. 브라우저 GPS 권한을 허용해 주세요.")
     else:
         user_lat = location['coords']['latitude']
         user_lon = location['coords']['longitude']
 
-        # 거리 필터 적용 (내 위치 기준)
+        # 백터 연산으로 고속 거리 필터링
         if dist_filter != "전체 보기" and not df_filtered.empty:
             max_d = {"1km 이내": 1000, "3km 이내": 3000, "5km 이내": 5000}[dist_filter]
-            df_filtered['dist_m'] = df_filtered.apply(
-                lambda r: geodesic((user_lat, user_lon), (r['위도'], r['경도'])).meters, axis=1
-            )
+            df_filtered['dist_m'] = fast_distance_meters(user_lat, user_lon, df_filtered['위도'].values, df_filtered['경도'].values)
             df_filtered = df_filtered[df_filtered['dist_m'] <= max_d].reset_index(drop=True)
 
-        # 장소 드롭다운 검색/선택
         st.subheader("📍 장소 직접 검색 / 선택")
         place_options = ["선택 안함 (지도의 아이콘 클릭 가능)"]
         if not df_filtered.empty:
@@ -134,7 +124,6 @@ with tab_user:
                 f"[{row['상권업종소분류명']}] {row['상호명']} ({row['시군구명']})" for _, row in df_filtered.iterrows()
             ]
 
-        # 현재 선택된 장소가 있다면 드롭다운 자동 인덱스 맞춤
         current_addr = global_store["base_address"]
         default_index = 0
         if current_addr and not df_filtered.empty:
@@ -151,7 +140,7 @@ with tab_user:
             global_store["base_location"] = (float(selected_row['위도']), float(selected_row['경도']))
             global_store["base_address"] = str(selected_row['상호명'])
 
-        # 지도 중심 결정
+        # 지도 중심 설정
         if global_store["base_location"]:
             map_center = global_store["base_location"]
             map_zoom = 16
@@ -165,11 +154,9 @@ with tab_user:
             map_center = [33.38, 126.55]
             map_zoom = 11
 
-        # Folium 지도 객체 생성
         m = folium.Map(location=map_center, zoom_start=map_zoom, tiles="OpenStreetMap")
-        marker_cluster = MarkerCluster(disableClusteringAtZoom=14).add_to(m)
+        marker_cluster = MarkerCluster(disableClusteringAtZoom=15).add_to(m)
 
-        # 마커 추가 (선택된 카페는 빨간색 별 ⭐ 마커로 명확하게 강조)
         if not df_filtered.empty:
             for _, row in df_filtered.iterrows():
                 category = str(row['상권업종소분류명'])
@@ -190,7 +177,6 @@ with tab_user:
                     icon=folium.Icon(color=icon_color, icon=icon_type, prefix="fa")
                 ).add_to(marker_cluster)
 
-        # 선택된 장소에 50m 반경 원 표시
         if global_store["base_location"]:
             base_lat, base_lon = global_store["base_location"]
             folium.Circle(
@@ -204,7 +190,6 @@ with tab_user:
                 popup=f"{global_store['base_address']} (50m 인식 범위)"
             ).add_to(m)
 
-        # 내 위치 마커
         folium.Marker(
             [user_lat, user_lon], 
             popup="📱 내 위치", 
@@ -213,16 +198,14 @@ with tab_user:
         ).add_to(m)
 
         st.subheader(f"🗺️ 실시간 지도 ({selected_region})")
-        st.caption("💡 지도 상의 **🟠 카페 마커**를 클릭하면 **🔴 빨간색 별 마커(⭐)**로 바뀌며 실시간 인원수가 집계됩니다.")
+        st.caption("💡 지도 상의 **🟠 카페 마커**를 클릭하면 **🔴 빨간색 별 마커(⭐)**로 변경되며 실시간 인원수가 집계됩니다.")
         
-        # [핵심] 필터나 선택 상태가 변경될 때마다 지도를 새로 그리도록 동적 key 부여
         cat_key_str = "_".join(selected_categories) if selected_categories else "none"
         base_addr_str = global_store["base_address"] or "none"
         dynamic_map_key = f"folium_map_{selected_region}_{cat_key_str}_{dist_filter}_{base_addr_str}"
 
         map_data = st_folium(m, width=800, height=480, key=dynamic_map_key)
 
-        # 지도 마커 클릭 시 선택 상태 업데이트
         clicked_obj = None
         if map_data:
             clicked_obj = map_data.get("last_marker_clicked") or map_data.get("last_object_clicked")
@@ -245,7 +228,6 @@ with tab_user:
 
         st.divider()
 
-        # 카페 선택 현황 카드 표시
         if global_store["base_location"] is None or not global_store["base_address"]:
             st.warning("📍 **[선택 안 됨]** 현재 선택된 카페/장소가 없습니다. 지도 위 마커나 상단 목록에서 카페를 선택해 주세요.")
         else:
@@ -255,7 +237,9 @@ with tab_user:
 
             active_set = global_store["cafe_active_users"][target_place]
             b_lat, b_lon = global_store["base_location"]
-            distance = geodesic((user_lat, user_lon), (b_lat, b_lon)).meters
+            
+            # 거리 계산
+            distance = fast_distance_meters(user_lat, user_lon, b_lat, b_lon)
 
             if distance <= ALLOWED_RADIUS_METERS:
                 active_set.add(user_id)
@@ -275,9 +259,9 @@ with tab_user:
             if st.button("🔄 실시간 인원수 새로고침", use_container_width=True, type="primary"):
                 st.rerun()
 
-# ------------------------------------------
-# [탭 2] 관리자 전용 화면
-# ------------------------------------------
+# ==========================================
+# 6. 관리자 전용 화면
+# ==========================================
 with tab_admin:
     st.header("🔐 관리자 전용 페이지")
 

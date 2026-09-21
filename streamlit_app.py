@@ -8,7 +8,7 @@ from streamlit_folium import st_folium
 from folium.plugins import MarkerCluster
 
 # 페이지 기본 설정
-st.set_page_config(page_title="제주 카페 실시간 인원 카운터", page_icon="☕", layout="centered")
+st.set_page_config(page_title="제주 카페 실시간 인원 카운터", page_icon="☕", layout="wide")
 
 ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 
@@ -19,19 +19,18 @@ ALLOWED_RADIUS_METERS = 50  # 감지 반경 50m
 def get_global_store():
     admin_email = st.secrets.get("ADMIN_EMAIL", "seokhwanyun892@gmail.com")
     
-    # store.csv 파일에서 제주도 카페 데이터 로드
+    # store.csv 파일에서 제주도 상점 데이터 전체 로드
     try:
         df = pd.read_csv("store.csv")
-        cafe_df = df[df['상권업종소분류명'].str.contains('카페', na=False)].reset_index(drop=True)
     except Exception as e:
-        cafe_df = pd.DataFrame(columns=['상호명', '상권업종소분류명', '시도명', '시군구명', '위도', '경도'])
+        df = pd.DataFrame(columns=['상호명', '상권업종소분류명', '시도명', '시군구명', '위도', '경도'])
     
     return {
         "base_location": None,       # (위도, 경도)
-        "base_address": "",          # 선택된 카페 이름
-        "cafe_active_users": {},     # 카페별 실시간 입실 유저 목록 {"카페명": set(user_ids)}
+        "base_address": "",          # 선택된 장소 이름
+        "cafe_active_users": {},     # 장소별 실시간 입실 유저 목록 {"장소명": set(user_ids)}
         "admin_email": admin_email,
-        "cafe_df": cafe_df
+        "store_df": df
     }
 
 global_store = get_global_store()
@@ -49,58 +48,156 @@ if "is_admin" not in st.session_state:
     st.session_state.is_admin = False
 
 # ==========================================
-# 3. 화면 탭 분리 (메인 사용자 화면 / 관리자 전용)
+# 3. ⚙️ [요구사항 3] 좌측 사이드바 필터 설정
+# ==========================================
+st.sidebar.header("⚙️ 지도 표시 필터")
+
+# [요구사항 4, 5] 지역 선택
+region_list = ["전체", "제주시", "서귀포시"]
+selected_region = st.sidebar.selectbox("📍 지역 선택", options=region_list)
+
+# [요구사항 3] 표시할 아이콘 종류 선택
+all_categories = list(global_store["store_df"]['상권업종소분류명'].unique()) if not global_store["store_df"].empty else ["카페", "편의점"]
+selected_categories = st.sidebar.multiselect(
+    "🏪 지도에 표시할 아이콘 선택", 
+    options=all_categories, 
+    default=["카페"]
+)
+
+st.sidebar.divider()
+st.sidebar.info("💡 사이드바에서 지역을 변경하면 해당 지역으로 지도가 자동 이동하고 해당 정보만 필터링됩니다.")
+
+# ==========================================
+# 4. 데이터 필터링 및 중심 좌표 계산
+# ==========================================
+df_data = global_store["store_df"].copy()
+
+# [요구사항 5] 지역 필터링
+if selected_region != "전체":
+    df_data = df_data[df_data['시군구명'] == selected_region]
+
+# 카테고리 필터링
+if selected_categories:
+    df_filtered = df_data[df_data['상권업종소분류명'].isin(selected_categories)].reset_index(drop=True)
+else:
+    df_filtered = pd.DataFrame(columns=df_data.columns)
+
+# [요구사항 4] 지역별 중심 좌표 및 줌 레벨 지정
+if selected_region == "제주시":
+    map_center = [33.4996, 126.5312]
+    map_zoom = 12
+elif selected_region == "서귀포시":
+    map_center = [33.2541, 126.5601]
+    map_zoom = 12
+else:
+    map_center = [33.38, 126.55]  # 제주 전체
+    map_zoom = 10
+
+# ==========================================
+# 5. 메인 화면 탭 분리
 # ==========================================
 tab_user, tab_admin = st.tabs(["📱 사용자 화면 (카페 검색/선택)", "🔐 관리자 전용"])
 
-# 공통으로 브라우저 위치 가져오기
+# 공통 브라우저 위치 가져오기
 location = get_geolocation()
 
 # ------------------------------------------
 # [탭 1] 일반 사용자 화면
 # ------------------------------------------
 with tab_user:
-    st.title("☕ 제주 카페 실시간 인원 카운터")
-    st.write(f"지도 위의 **☕ 카페 아이콘을 클릭**하거나 직접 선택하세요. 반경 {ALLOWED_RADIUS_METERS}m 진입 시 **자동 입실** 처리됩니다.")
+    st.title("☕ 제주 실시간 장소/카페 인원 카운터")
+    st.write(f"왼쪽 사이드바에서 **지역 및 표시할 아이콘**을 설정하세요. 지도 상의 마커를 클릭하거나 검색하여 장소를 선택할 수 있습니다.")
 
     if location is None:
         st.info("🌐 브라우저의 위치 권한 요청을 승인해 주세요...")
     elif not isinstance(location, dict) or "coords" not in location or location["coords"] is None:
-        st.warning("⚠️ 위치 정보를 가져올 수 없습니다. GPS가 켜져 있는지 확인해 주세요.")
+        st.warning("⚠️ 위치 정보를 가져올 수 없습니다. 브라우저 GPS 권한을 확인해 주세요.")
     else:
         user_lat = location['coords']['latitude']
         user_lon = location['coords']['longitude']
-        cafe_df = global_store["cafe_df"]
 
-        # 1. 일반 사용자도 카페를 선택할 수 있는 드롭다운
-        st.subheader("📍 카페 위치 선택")
-        if not cafe_df.empty:
-            cafe_options = ["선택 안함 (지도의 아이콘 클릭 가능)"] + [f"{row['상호명']} ({row['시군구명']})" for _, row in cafe_df.iterrows()]
-            selected_option = st.selectbox("제주도 카페 검색/선택", options=cafe_options)
+        # [요구사항 5] 선택 지역의 카페/장소 선택 드롭다운
+        st.subheader("📍 장소 직접 선택")
+        if not df_filtered.empty:
+            place_options = ["선택 안함 (지도의 마커 클릭 가능)"] + [f"[{row['상권업종소분류명']}] {row['상호명']} ({row['시군구명']})" for _, row in df_filtered.iterrows()]
+            selected_option = st.selectbox("선택된 지역 장소 목록", options=place_options)
 
-            if selected_option != "선택 안함 (지도의 아이콘 클릭 가능)":
-                selected_idx = cafe_options.index(selected_option) - 1
-                selected_row = cafe_df.iloc[selected_idx]
+            if selected_option != "선택 안함 (지도의 마커 클릭 가능)":
+                selected_idx = place_options.index(selected_option) - 1
+                selected_row = df_filtered.iloc[selected_idx]
                 global_store["base_location"] = (float(selected_row['위도']), float(selected_row['경도']))
                 global_store["base_address"] = str(selected_row['상호명'])
 
-        # 2. 지도 생성 및 제주도 모든 카페 아이콘 배치
-        map_center = global_store["base_location"] if global_store["base_location"] else (user_lat, user_lon)
-        m = folium.Map(location=map_center, zoom_start=14, tiles="OpenStreetMap")
+        # 선택된 기준점이 있으면 그곳으로 중심 이동
+        if global_store["base_location"]:
+            map_center = global_store["base_location"]
+            map_zoom = 15
 
-        # 3,000여 개 카페 마커 클러스터링 (속도 최적화)
-        marker_cluster = MarkerCluster().add_to(m)
+        # Folium 지도 생성을 위한 기본 객체
+        m = folium.Map(location=map_center, zoom_start=map_zoom, tiles="OpenStreetMap")
 
-        if not cafe_df.empty:
-            for _, row in cafe_df.iterrows():
-                folium.Marker(
-                    location=[row['위도'], row['경도']],
-                    popup=row['상호명'],
-                    tooltip=row['상호명'],
-                    icon=folium.Icon(color="orange", icon="coffee", prefix="fa")
-                ).add_to(marker_cluster)
+        # [요구사항 1 & 2] 마커 생성
+        # 카페 아이콘 HTML 스타일ing (병원 아이콘처럼 확대되고 축소해도 명확히 보임)
+        cafe_div_html = """
+        <div style="
+            background-color: #d35400;
+            color: white;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 17px;
+            border: 2px solid white;
+            box-shadow: 0px 2px 6px rgba(0,0,0,0.4);
+            cursor: pointer;
+        ">☕</div>
+        """
 
-        # 현재 선택된 카페(기준점) 강조 표시
+        # 편의점 등 기타 아이콘 HTML (축소 시 안 보이거나 깔끔하도록 클러스터 처리)
+        store_div_html = """
+        <div style="
+            background-color: #2980b9;
+            color: white;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            border: 1.5px solid white;
+            box-shadow: 0px 1px 4px rgba(0,0,0,0.3);
+        ">🏪</div>
+        """
+
+        # [요구사항 2] 카페 외 아이콘은 축소 시 뭉치거나 확대 시에만 드러나도록 클러스터 적용
+        cafe_cluster = MarkerCluster(name="카페 목록", disableClusteringAtZoom=15).add_to(m)
+        other_cluster = MarkerCluster(name="기타 매장", disableClusteringAtZoom=17).add_to(m)
+
+        if not df_filtered.empty:
+            for _, row in df_filtered.iterrows():
+                is_cafe = '카페' in str(row['상권업종소분류명'])
+                
+                if is_cafe:
+                    # [요구사항 1] 선명하게 확대된 카페 전용 DivIcon
+                    folium.Marker(
+                        location=[row['위도'], row['경도']],
+                        popup=row['상호명'],
+                        tooltip=f"☕ {row['상호명']}",
+                        icon=folium.DivIcon(html=cafe_div_html, icon_size=(32, 32), icon_anchor=(16, 16))
+                    ).add_to(cafe_cluster)
+                else:
+                    # [요구사항 2] 카페 이외 아이콘 (축소 시 클러스터링으로 가려짐)
+                    folium.Marker(
+                        location=[row['위도'], row['경도']],
+                        popup=row['상호명'],
+                        tooltip=f"🏪 {row['상호명']}",
+                        icon=folium.DivIcon(html=store_div_html, icon_size=(24, 24), icon_anchor=(12, 12))
+                    ).add_to(other_cluster)
+
+        # 현재 선택된 기준 장소 강조 마커 및 50m 범위 원
         if global_store["base_location"]:
             base_lat, base_lon = global_store["base_location"]
             folium.Marker(
@@ -127,56 +224,55 @@ with tab_user:
             icon=folium.Icon(color="blue", icon="user")
         ).add_to(m)
 
-        st.subheader("🗺️ 실시간 제주 카페 지도")
-        st.caption("💡 지도 상의 **☕ 카페 아이콘**을 직접 누르면 클릭한 지점의 카페 정보와 인원수가 조회됩니다.")
+        st.subheader(f"🗺️ 실시간 지도 ({selected_region})")
+        st.caption("💡 지도 위의 마커를 누르면 클릭한 위치의 인원수가 자동 조회됩니다.")
         
-        # 지도 출력 및 클릭 이벤트 수신
-        map_data = st_folium(m, width=700, height=400, key="user_cafe_map")
+        map_data = st_folium(m, width=800, height=450, key="main_user_map")
 
-        # 지도의 카페 마커 클릭 시 클릭된 카페 자동 감지
+        # 마커 클릭 이벤트 처리
         if map_data and map_data.get("last_object_clicked"):
             clicked_lat = map_data["last_object_clicked"]["lat"]
             clicked_lon = map_data["last_object_clicked"]["lng"]
 
-            # 가장 가까운 카페 찾아내기
-            cafe_df['dist_calc'] = (cafe_df['위도'] - clicked_lat)**2 + (cafe_df['경도'] - clicked_lon)**2
-            closest_cafe = cafe_df.loc[cafe_df['dist_calc'].idxmin()]
-            
-            if closest_cafe['dist_calc'] < 0.0001:  # 마커 부근 클릭 시
-                new_addr = str(closest_cafe['상호명'])
-                new_loc = (float(closest_cafe['위도']), float(closest_cafe['경도']))
-                if global_store["base_address"] != new_addr:
-                    global_store["base_location"] = new_loc
-                    global_store["base_address"] = new_addr
-                    st.rerun()
+            # 가장 가까운 매장 찾기
+            if not df_filtered.empty:
+                df_filtered['dist_calc'] = (df_filtered['위도'] - clicked_lat)**2 + (df_filtered['경도'] - clicked_lon)**2
+                closest_place = df_filtered.loc[df_filtered['dist_calc'].idxmin()]
+                
+                if closest_place['dist_calc'] < 0.0001:
+                    new_addr = str(closest_place['상호명'])
+                    new_loc = (float(closest_place['위도']), float(closest_place['경도']))
+                    if global_store["base_address"] != new_addr:
+                        global_store["base_location"] = new_loc
+                        global_store["base_address"] = new_addr
+                        st.rerun()
 
         st.divider()
 
-        # 3. 클릭/선택한 카페의 실시간 인원수 및 거리 표시
+        # 실시간 인원수 및 거리 표시
         if global_store["base_location"] is None:
-            st.info("📍 상단 드롭다운 또는 지도 위의 카페 아이콘을 클릭하여 카페를 선택해 주세요.")
+            st.info("📍 상단 드롭다운 또는 지도 위의 아이콘을 클릭하여 장소를 선택해 주세요.")
         else:
-            target_cafe = global_store["base_address"]
-            if target_cafe not in global_store["cafe_active_users"]:
-                global_store["cafe_active_users"][target_cafe] = set()
+            target_place = global_store["base_address"]
+            if target_place not in global_store["cafe_active_users"]:
+                global_store["cafe_active_users"][target_place] = set()
 
-            active_set = global_store["cafe_active_users"][target_cafe]
+            active_set = global_store["cafe_active_users"][target_place]
             b_lat, b_lon = global_store["base_location"]
             distance = geodesic((user_lat, user_lon), (b_lat, b_lon)).meters
 
-            # 50m 이내 자동 입실/퇴실 판정
             if distance <= ALLOWED_RADIUS_METERS:
                 active_set.add(user_id)
-                status_msg = f"✅ 카페 반경 {ALLOWED_RADIUS_METERS}m 이내에 있어 **[자동 입실]** 처리되었습니다."
+                status_msg = f"✅ 반경 {ALLOWED_RADIUS_METERS}m 이내에 있어 **[자동 입실]** 처리되었습니다."
                 status_box = st.success
             else:
                 active_set.discard(user_id)
-                status_msg = f"❌ 카페 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다."
+                status_msg = f"❌ 반경 {ALLOWED_RADIUS_METERS}m 밖에 있어 **[자동 퇴실]** 처리되었습니다."
                 status_box = st.error
 
-            st.markdown(f"### ☕ 현재 선택된 카페: **{target_cafe}**")
-            st.metric(label=f"📊 현재 해당 카페({ALLOWED_RADIUS_METERS}m 반경) 실시간 이용 인원수", value=f"{len(active_set)} 명")
-            st.write(f"📍 내 위치와 카페와의 거리: **약 {int(distance)}m**")
+            st.markdown(f"### 📍 현재 선택된 장소: **{target_place}**")
+            st.metric(label=f"📊 현재 장소({ALLOWED_RADIUS_METERS}m 반경) 실시간 이용 인원수", value=f"{len(active_set)} 명")
+            st.write(f"📍 내 위치와의 거리: **약 {int(distance)}m**")
             status_box(status_msg)
 
             st.divider()
